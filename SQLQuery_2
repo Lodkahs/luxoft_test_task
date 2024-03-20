@@ -1,0 +1,53 @@
+-- CategoryName
+-- Total Sales
+--AverageOrderValue = total revenue/total number of orders
+--AverageTimeToShip (in days)
+--Top5Ratio (total sales of the top 5 products to the total sales of all products in the category)
+-- AverageOrderFrequency (number of orders per customer)
+-- The result should be sorted by Total Sales in descending order.
+
+
+WITH TopProducts AS (
+    SELECT 
+        Categories.CategoryID, 
+        Products.ProductID,
+        SUM([Order Details].Quantity * [Order Details].UnitPrice) AS TotalSales,
+        ROW_NUMBER() OVER (PARTITION BY Categories.CategoryID ORDER BY SUM([Order Details].Quantity * [Order Details].UnitPrice) DESC) AS RowNum
+    FROM 
+        dbo.Orders
+    JOIN 
+        Customers ON Orders.CustomerID = Customers.CustomerID
+    JOIN 
+        [Order Details] ON Orders.OrderID = [Order Details].OrderID
+    JOIN 
+        Products ON [Order Details].ProductID = Products.ProductID
+    JOIN 
+        Categories ON Products.CategoryID = Categories.CategoryID
+    GROUP BY 
+        Categories.CategoryID, 
+        Products.ProductID
+)
+SELECT 
+    c.CategoryName,
+    sum(od.UnitPrice * od.Quantity) as TotalSale,
+    ROUND(ROUND(SUM(ROUND((od.UnitPrice * Quantity - (od.UnitPrice * Quantity * Discount)), 1)), 1) / SUM(Quantity), 1) AS AverageOrderValue,
+    AVG(ABS(round(DATEDIFF(day, ShippedDate, OrderDate), 0))) AS AverageTimeToShip,
+    --SUM(CASE WHEN tp.RowNum <= 5 THEN tp.TotalSales ELSE 0 END) AS Top5Sales,
+    SUM(od.Quantity * od.UnitPrice) / NULLIF(SUM(CASE WHEN tp.RowNum <= 5 THEN tp.TotalSales ELSE 0 END), 0) AS Top5Ratio,
+    COUNT(DISTINCT o.OrderID) / COUNT(DISTINCT cus.CustomerID) as AverageOrderFrequency
+FROM
+    dbo.Categories c
+LEFT JOIN
+    Products pr ON c.CategoryID = pr.CategoryID
+LEFT JOIN
+    [Order Details] od ON pr.ProductID = od.ProductID
+LEFT JOIN
+    Orders o ON od.OrderID = o.OrderID
+LEFT JOIN
+    Customers cus ON o.CustomerID = cus.CustomerID
+LEFT JOIN
+    TopProducts tp ON od.ProductID = tp.ProductID
+GROUP BY 
+    c.CategoryName
+ORDER BY 
+    TotalSale DESC
